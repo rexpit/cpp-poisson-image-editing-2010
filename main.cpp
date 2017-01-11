@@ -9,13 +9,13 @@ Specian Thanks: 物理のかぎしっぽ (http://hooktail.sub.jp/)
 #pragma warning( disable : 4996 )	/* strn??? の警告抑制 (VC++) */
 #include <cstdio>
 #include <cmath>	/* sqrt, abs のため */
+#include <algorithm>	/* min, max のため */
 #include <cstring>	/* file 名設定のため */
 #include <string>	/* file 名設定のため */
 #include "bitmap.h"
 #include "filter.h"
-#include "mystdio.h"	/* 文字入力のため */
+#include "mystdio.h"	/* ファイルからの文字入力のため */
 #include "bitmask.h"
-#include "mymath.h"	/* maxNum や minNum を使う */
 
 #define	MODE_EXIT	0
 #define	MODE_PIE	1	/* Poisson 画像合成 */
@@ -54,31 +54,31 @@ typedef unsigned int uint;
 typedef unsigned char byte;
 
 /* Command Line 引数から得られる情報 */
-struct ArgInfo_t{
-	char *FileArgv[FILEARGV_FILENUM];
-	bool Flag[ARGFLAG_FLAGNUM];
-	double AmpN;	/* Filter の増幅倍率 */
-	int PtX[ARGPT_PTNUM], PtY[ARGPT_PTNUM];	/* 合成境界などの情報 */
+struct ArgInfo{
+	std::string fileArgv[FILEARGV_FILENUM];
+	bool flag[ARGFLAG_FLAGNUM];
+	double ampN;	/* Filter の増幅倍率 */
+	int ptX[ARGPT_PTNUM], ptY[ARGPT_PTNUM];	/* 合成境界などの情報 */
 };
 
 /* 領域 Mask 設定 */
-int SetRegionMask_BeforeCompose(class BitMask_t &RegionMsk, struct ArgInfo_t &ArgInfo, int &SrcX1, int &SrcY1, int &TrgX1, int &TrgY1);
+int setRegionMask_BeforeCompose(BitMask *regionMsk, const ArgInfo &argInfo, int *srcX1, int *srcY1, int *trgX1, int *trgY1);
 
 /* Poisson 画像合成用擬似 main 関数 */
-int PIE_Main(struct ArgInfo_t &ArgInfo);
+int pIE_Main(const ArgInfo &argInfo);
 
 /* 単純合成用擬似 main 関数 */
-int StCm_Main(struct ArgInfo_t &ArgInfo);
+int stCm_Main(const ArgInfo &argInfo);
 
 /* BMP を BMP (Laplacian Image) に (擬似 main 関数) */
-int bmp2bmp_lap(struct ArgInfo_t &ArgInfo);
+int bmp2bmp_lap(const ArgInfo &argInfo);
 
 /* BMP を BMP (Grayscale Image) に (擬似 main 関数) */
-int bmp2bmp_gs(struct ArgInfo_t &ArgInfo);
+int bmp2bmp_gs(const ArgInfo &argInfo);
 
-int main(int argc, char *argv[]){
-	int mode = MODE_EXIT, FileArgc = 0;
-	struct ArgInfo_t ArgInfo;
+int main(const int argc, const char *argv[]){
+	int mode = MODE_EXIT, fileArgc = 0;
+	ArgInfo argInfo;
 
 	/* 引数 filter (機能選択) */
 	if(argc < 2){
@@ -86,10 +86,7 @@ int main(int argc, char *argv[]){
 		return 0;
 	}
 	for(int i = 0; i < ARGFLAG_FLAGNUM; ++i){	/* 全 flag を off に */
-		ArgInfo.Flag[i] = false;
-	}
-	for(int i = 0; i < FILEARGV_FILENUM; ++i){	/* 全 FileArgv を NULL に */
-		ArgInfo.FileArgv[i] = NULL;
+		argInfo.flag[i] = false;
 	}
 	for(int i = 1; i < argc; ++i){
 		if(argv[i][0] == '-'){
@@ -100,8 +97,8 @@ int main(int argc, char *argv[]){
 					fputs("ERROR: If you use the option -s, you must add source image file name in the next.\n", stderr);
 					return 1;
 				}
-				ArgInfo.FileArgv[FILEARGV_SRC] = argv[i];
-				ArgInfo.Flag[ARGFLAG_SRCIMG] = true;
+				argInfo.fileArgv[FILEARGV_SRC] = argv[i];
+				argInfo.flag[ARGFLAG_SRCIMG] = true;
 			}else if(strcmp(argv[i] + 1, "t") == 0){
 				/* 対象画像 file 名 */
 				++i;
@@ -109,8 +106,8 @@ int main(int argc, char *argv[]){
 					fputs("ERROR: If you use the option -t, you must add target image file name in the next.\n", stderr);
 					return 1;
 				}
-				ArgInfo.FileArgv[FILEARGV_TRG] = argv[i];
-				ArgInfo.Flag[ARGFLAG_TRGIMG] = true;
+				argInfo.fileArgv[FILEARGV_TRG] = argv[i];
+				argInfo.flag[ARGFLAG_TRGIMG] = true;
 			}else if(strcmp(argv[i] + 1, "m") == 0){
 				/* mask 画像 file 名 */
 				++i;
@@ -118,8 +115,8 @@ int main(int argc, char *argv[]){
 					fputs("ERROR: If you use the option -m, you must add mask image file name in the next.\n", stderr);
 					return 1;
 				}
-				ArgInfo.FileArgv[FILEARGV_MSK] = argv[i];
-				ArgInfo.Flag[ARGFLAG_MSKIMG] = true;
+				argInfo.fileArgv[FILEARGV_MSK] = argv[i];
+				argInfo.flag[ARGFLAG_MSKIMG] = true;
 			}else if(strcmp(argv[i] + 1, "o") == 0){
 				/* 出力画像 file 名 */
 				++i;
@@ -127,150 +124,150 @@ int main(int argc, char *argv[]){
 					fputs("ERROR: If you use the option -o, you must add output image file name in the next.\n", stderr);
 					return 1;
 				}
-				ArgInfo.FileArgv[FILEARGV_OUT] = argv[i];
-				ArgInfo.Flag[ARGFLAG_OUTIMG] = true;
+				argInfo.fileArgv[FILEARGV_OUT] = argv[i];
+				argInfo.flag[ARGFLAG_OUTIMG] = true;
 			}else if(strcmp(argv[i] + 1, "sp1") == 0){
 				/* 元画像の合成元領域を囲む長方形の左上端点 (x1,y1) の入力 */
-				char *ErrMsgInOptSp1 = "ERROR: If you use the option -sp1, you must add source's x1 and y1 in the next.\n", *EndPtr;
+				char *errMsgInOptSp1 = "ERROR: If you use the option -sp1, you must add source's x1 and y1 in the next.\n", *endPtr;
 				if(i + 2 >= argc){
-					fputs(ErrMsgInOptSp1, stderr);
+					fputs(errMsgInOptSp1, stderr);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtX[ARGPT_SRC1] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fputs(ErrMsgInOptSp1, stderr);
+				argInfo.ptX[ARGPT_SRC1] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fputs(errMsgInOptSp1, stderr);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtY[ARGPT_SRC1] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fputs(ErrMsgInOptSp1, stderr);
+				argInfo.ptY[ARGPT_SRC1] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fputs(errMsgInOptSp1, stderr);
 					return 1;
 				}
-				ArgInfo.Flag[ARGFLAG_SRCPTN1] = true;
+				argInfo.flag[ARGFLAG_SRCPTN1] = true;
 			}else if(strcmp(argv[i] + 1, "sp2") == 0){
 				/* 元画像の合成元領域を囲む長方形の右下端点 (x2,y2) の入力 */
-				char *ErrMsgInOptSp2 = "ERROR: If you use the option -sp2, you must add source's x2 and y2 in the next.\n", *EndPtr;
+				char *errMsgInOptSp2 = "ERROR: If you use the option -sp2, you must add source's x2 and y2 in the next.\n", *endPtr;
 				if(i + 2 >= argc){
-					fputs(ErrMsgInOptSp2, stderr);
+					fputs(errMsgInOptSp2, stderr);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtX[ARGPT_SRC2] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fputs(ErrMsgInOptSp2, stderr);
+				argInfo.ptX[ARGPT_SRC2] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fputs(errMsgInOptSp2, stderr);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtY[ARGPT_SRC2] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fputs(ErrMsgInOptSp2, stderr);
+				argInfo.ptY[ARGPT_SRC2] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fputs(errMsgInOptSp2, stderr);
 					return 1;
 				}
-				ArgInfo.Flag[ARGFLAG_SRCPTN2] = true;
+				argInfo.flag[ARGFLAG_SRCPTN2] = true;
 			}else if(strcmp(argv[i] + 1, "tp1") == 0){
 				/* 対象画像の合成先領域を囲む長方形の左上端点 (x1,y1) の入力 */
-				char *ErrMsgInOptTp1 = "ERROR: If you use the option -tp1, you must add target's x1 and y1 in the next.\n", *EndPtr;
+				char *errMsgInOptTp1 = "ERROR: If you use the option -tp1, you must add target's x1 and y1 in the next.\n", *endPtr;
 				if(i + 2 >= argc){
-					fprintf(stderr, ErrMsgInOptTp1, argv[i] + 1);
+					fprintf(stderr, errMsgInOptTp1, argv[i] + 1);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtX[ARGPT_TRG1] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fprintf(stderr, ErrMsgInOptTp1, argv[i] + 1);
+				argInfo.ptX[ARGPT_TRG1] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fprintf(stderr, errMsgInOptTp1, argv[i] + 1);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtY[ARGPT_TRG1] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fprintf(stderr, ErrMsgInOptTp1, argv[i] + 1);
+				argInfo.ptY[ARGPT_TRG1] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fprintf(stderr, errMsgInOptTp1, argv[i] + 1);
 					return 1;
 				}
-				ArgInfo.Flag[ARGFLAG_TRGPTN1] = true;
+				argInfo.flag[ARGFLAG_TRGPTN1] = true;
 			}else if(strcmp(argv[i] + 1, "dts") == 0){
 				/* 対象画像上の点 (xt,yt) と元画像上の点 (xs,ys) の平行移動 (Δx,Δy) = (xt-xs,yt-ys) の入力 */
-				char *ErrMsgInOptDts = "ERROR: If you use the option -%s, you must add target's x1 and y1 in the next.\n", *EndPtr;
+				char *errMsgInOptDts = "ERROR: If you use the option -%s, you must add target's x1 and y1 in the next.\n", *endPtr;
 				if(i + 2 >= argc){
-					fprintf(stderr, ErrMsgInOptDts, argv[i] + 1);
+					fprintf(stderr, errMsgInOptDts, argv[i] + 1);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtX[ARGPT_DTS] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fprintf(stderr, ErrMsgInOptDts, argv[i] + 1);
+				argInfo.ptX[ARGPT_DTS] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fprintf(stderr, errMsgInOptDts, argv[i] + 1);
 					return 1;
 				}
 				++i;
-				ArgInfo.PtY[ARGPT_DTS] = strtol(argv[i], &EndPtr, 10);
-				if(*EndPtr != '\0'){
-					fprintf(stderr, ErrMsgInOptDts, argv[i] + 1);
+				argInfo.ptY[ARGPT_DTS] = strtol(argv[i], &endPtr, 10);
+				if(*endPtr != '\0'){
+					fprintf(stderr, errMsgInOptDts, argv[i] + 1);
 					return 1;
 				}
-				ArgInfo.Flag[ARGFLAG_DTSP] = true;
+				argInfo.flag[ARGFLAG_DTSP] = true;
 			}else if(strcmp(argv[i] + 1, "sc") == 0){
 				/* 単純合成 */
-				ArgInfo.Flag[ARGFLAG_SC] = true;
+				argInfo.flag[ARGFLAG_SC] = true;
 			}else if(strcmp(argv[i] + 1, "gs") == 0){
 				/* Grayscale */
-				ArgInfo.Flag[ARGFLAG_GS] = true;
+				argInfo.flag[ARGFLAG_GS] = true;
 			}else if(strcmp(argv[i] + 1, "amp") == 0){
 				/* Filter の増幅 */
-				char *ErrMsgInOptAmp = "ERROR: If you use the option -amp, you must add an amplification rate in the next.\n", *EndPtr;
+				char *errMsgInOptAmp = "ERROR: If you use the option -amp, you must add an amplification rate in the next.\n", *EndPtr;
 				++i;
 				if(i >= argc){
-					fputs(ErrMsgInOptAmp, stderr);
+					fputs(errMsgInOptAmp, stderr);
 					return 1;
 				}
-				ArgInfo.AmpN = strtod(argv[i], &EndPtr);
+				argInfo.ampN = strtod(argv[i], &EndPtr);
 				if(*EndPtr != '\0'){
-					fputs(ErrMsgInOptAmp, stderr);
+					fputs(errMsgInOptAmp, stderr);
 					return 1;
 				}
-				ArgInfo.Flag[ARGFLAG_AMP] = true;
+				argInfo.flag[ARGFLAG_AMP] = true;
 			}else if(strcmp(argv[i] + 1, "mix") == 0){
 				/* Filter の混合 */
-				ArgInfo.Flag[ARGFLAG_MIX] = true;
+				argInfo.flag[ARGFLAG_MIX] = true;
 			}else{
 				fputs("ERROR: There are undefined options.\n", stderr);
 				return 1;
 			}
 		}else{
-			switch(FileArgc){
+			switch(fileArgc){
 				case FILEARGV_SRC:
-					ArgInfo.Flag[ARGFLAG_SRCIMG] = true;
+					argInfo.flag[ARGFLAG_SRCIMG] = true;
 					break;
 				case FILEARGV_TRG:
-					ArgInfo.Flag[ARGFLAG_TRGIMG] = true;
+					argInfo.flag[ARGFLAG_TRGIMG] = true;
 					break;
 				case FILEARGV_MSK:
-					ArgInfo.Flag[ARGFLAG_MSKIMG] = true;
+					argInfo.flag[ARGFLAG_MSKIMG] = true;
 					break;
 				default:
 					fputs("ERROR: Outside assumption.\n", stderr);
 					return 1;
 					break;
 			}
-			ArgInfo.FileArgv[FileArgc] = argv[i];
-			++FileArgc;
+			argInfo.fileArgv[fileArgc] = argv[i];
+			++fileArgc;
 		}
 	}
-	if(!ArgInfo.Flag[ARGFLAG_SRCIMG]){	/* 何もできない系 */
+	if(!argInfo.flag[ARGFLAG_SRCIMG]){	/* 何もできない系 */
 		fputs("ERROR: Arguments are illegal.\n", stderr);
 		return 1;
-	}else if(ArgInfo.Flag[ARGFLAG_TRGIMG] || ArgInfo.Flag[ARGFLAG_AMP]){	/* 複数画像合成系 */
-		if(!ArgInfo.Flag[ARGFLAG_TRGIMG]){
-			ArgInfo.FileArgv[FILEARGV_TRG] = ArgInfo.FileArgv[FILEARGV_SRC];
-			ArgInfo.Flag[ARGFLAG_TRGIMG] = true;
+	}else if(argInfo.flag[ARGFLAG_TRGIMG] || argInfo.flag[ARGFLAG_AMP]){	/* 複数画像合成系 */
+		if(!argInfo.flag[ARGFLAG_TRGIMG]){
+			argInfo.fileArgv[FILEARGV_TRG] = argInfo.fileArgv[FILEARGV_SRC];
+			argInfo.flag[ARGFLAG_TRGIMG] = true;
 		}
-		mode = ArgInfo.Flag[ARGFLAG_SC] ? MODE_ST_CM : MODE_PIE;
-	}else if(!ArgInfo.Flag[ARGFLAG_TRGIMG] && !ArgInfo.Flag[ARGFLAG_MSKIMG]){	/* 単画像処理系 */
-		if(ArgInfo.Flag[ARGFLAG_SC]){
+		mode = argInfo.flag[ARGFLAG_SC] ? MODE_ST_CM : MODE_PIE;
+	}else if(!argInfo.flag[ARGFLAG_TRGIMG] && !argInfo.flag[ARGFLAG_MSKIMG]){	/* 単画像処理系 */
+		if(argInfo.flag[ARGFLAG_SC]){
 			fputs("ERROR: Arguments are illegal.\n", stderr);
 			return 1;
 		}
-		mode = ArgInfo.Flag[ARGFLAG_GS] ? MODE_BMP2BMP_GS : MODE_BMP2BMP_LAP;
+		mode = argInfo.flag[ARGFLAG_GS] ? MODE_BMP2BMP_GS : MODE_BMP2BMP_LAP;
 	}else{
 		fputs("ERROR: Arguments are illegal.\n", stderr);
 		return 1;
@@ -278,63 +275,56 @@ int main(int argc, char *argv[]){
 
 	switch(mode){
 		case MODE_PIE:
-			return PIE_Main(ArgInfo);
-			break;
+			return pIE_Main(argInfo);
 		case MODE_ST_CM:
-			return StCm_Main(ArgInfo);
-			break;
+			return stCm_Main(argInfo);
 		case MODE_BMP2BMP_LAP:
-			return bmp2bmp_lap(ArgInfo);
-			break;
+			return bmp2bmp_lap(argInfo);
 		case MODE_BMP2BMP_GS:
-			return bmp2bmp_gs(ArgInfo);
-			break;
+			return bmp2bmp_gs(argInfo);
 		default:
 			return 0;
-			break;
 	}
-
-	return 0;
 }
 
-int SetRegionMask_BeforeCompose(class BitMask_t &RegionMsk, struct ArgInfo_t &ArgInfo, int &SrcX1, int &SrcY1, int &TrgX1, int &TrgY1) {
-	int SrcX2, SrcY2;
+int setRegionMask_BeforeCompose(BitMask *regionMsk, const ArgInfo &argInfo, int *srcX1, int *srcY1, int *trgX1, int *trgY1) {
+	int srcX2, srcY2;
 	char yn[4];
-	if(!ArgInfo.Flag[ARGFLAG_SRCIMG] || !ArgInfo.Flag[ARGFLAG_TRGIMG]){
+	if(!argInfo.flag[ARGFLAG_SRCIMG] || !argInfo.flag[ARGFLAG_TRGIMG]){
 		return 1;
 	}
-	if(!ArgInfo.Flag[ARGFLAG_MSKIMG]){
-		if(ArgInfo.Flag[ARGFLAG_SRCPTN1] && ArgInfo.Flag[ARGFLAG_SRCPTN2] && ArgInfo.Flag[ARGFLAG_TRGPTN1]){	/* Command Line 引数に必要事項が書かれていたとき */
-			SrcX1 = ArgInfo.PtX[ARGPT_SRC1];
-			SrcY1 = ArgInfo.PtY[ARGPT_SRC1];
-			SrcX2 = ArgInfo.PtX[ARGPT_SRC2];
-			SrcY2 = ArgInfo.PtY[ARGPT_SRC2];
-			if(SrcX1 > SrcX2 || SrcY1 > SrcY2){
+	if(!argInfo.flag[ARGFLAG_MSKIMG]){
+		if(argInfo.flag[ARGFLAG_SRCPTN1] && argInfo.flag[ARGFLAG_SRCPTN2] && argInfo.flag[ARGFLAG_TRGPTN1]){	/* Command Line 引数に必要事項が書かれていたとき */
+			*srcX1 = argInfo.ptX[ARGPT_SRC1];
+			*srcY1 = argInfo.ptY[ARGPT_SRC1];
+			srcX2 = argInfo.ptX[ARGPT_SRC2];
+			srcY2 = argInfo.ptY[ARGPT_SRC2];
+			if(*srcX1 > srcX2 || *srcY1 > srcY2){
 				fputs("ERROR: 座標の関係が想定外です。", stderr);
 				return 1;
 			}
-			TrgX1 = ArgInfo.PtX[ARGPT_TRG1];
-			TrgY1 = ArgInfo.PtY[ARGPT_TRG1];
+			*trgX1 = argInfo.ptX[ARGPT_TRG1];
+			*trgY1 = argInfo.ptY[ARGPT_TRG1];
 		}else{
 			while(true){
-				fprintf(stderr, "合成元画像 (%s) の選択範囲 (x1,y1)~(x2,y2):\n", ArgInfo.FileArgv[FILEARGV_SRC]);
+				fprintf(stderr, "合成元画像 (%s) の選択範囲 (x1,y1)~(x2,y2):\n", argInfo.fileArgv[FILEARGV_SRC]);
 				fputs("x1 = ", stderr);
-				SrcX1 = inputInt(stdin);
+				*srcX1 = inputIntFromFILE(stdin);
 				fputs("y1 = ", stderr);
-				SrcY1 = inputInt(stdin);
+				*srcY1 = inputIntFromFILE(stdin);
 				fputs("x2 = ", stderr);
-				SrcX2 = inputInt(stdin);
+				srcX2 = inputIntFromFILE(stdin);
 				fputs("y2 = ", stderr);
-				SrcY2 = inputInt(stdin);
-				if(SrcX1 > SrcX2 || SrcY1 > SrcY2){
+				srcY2 = inputIntFromFILE(stdin);
+				if(*srcX1 > srcX2 || *srcY1 > srcY2){
 					fputs("ERROR: 座標の関係が想定外です。\n", stderr);
 					return 1;
 				}
-				fprintf(stderr, "\n合成対象画像 (%s) の合成先領域の左上端 (x,y):\n", ArgInfo.FileArgv[FILEARGV_TRG]);
+				fprintf(stderr, "\n合成対象画像 (%s) の合成先領域の左上端 (x,y):\n", argInfo.fileArgv[FILEARGV_TRG]);
 				fputs("x = ", stderr);
-				TrgX1 = inputInt(stdin);
+				*trgX1 = inputIntFromFILE(stdin);
 				fputs("y = ", stderr);
-				TrgY1 = inputInt(stdin);
+				*trgY1 = inputIntFromFILE(stdin);
 
 				fputs("\n設定は以上でよろしいですか? [Y/N]:", stderr);
 				myFgets(yn, sizeof(yn) / sizeof(yn[0]), stdin);
@@ -349,48 +339,48 @@ int SetRegionMask_BeforeCompose(class BitMask_t &RegionMsk, struct ArgInfo_t &Ar
 				}
 			}
 		}
-		if(RegionMsk.Create_Image(SrcX2 - SrcX1 + 1, SrcY2 - SrcY1 + 1)){ return 1; }
-		RegionMsk.Fill_BitMask();
+		if(regionMsk->create_Image(srcX2 - *srcX1 + 1, srcY2 - *srcY1 + 1)){ return 1; }
+		regionMsk->fill_BitMask();
 	}else{	/* mask が与えられたとき */
-		class Image_t RegionImg;
-		int TrgX2, TrgY2;
-		if(RegionImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_MSK])){ return 1; }
-		if(RegionMsk.Img2Mask(RegionImg)){ return 1; }
+		Image regionImg;
+		int trgX2, trgY2;
+		if(regionImg.read_Bmp(argInfo.fileArgv[FILEARGV_MSK].c_str())){ return 1; }
+		if(regionMsk->img2Mask(&regionImg)){ return 1; }
 
-		if(ArgInfo.Flag[ARGFLAG_DTSP]){	/* Command Line 引数に必要事項が書かれていたとき */
-			if(ArgInfo.Flag[ARGFLAG_SRCPTN1]){
-				SrcX1 = ArgInfo.PtX[ARGPT_SRC1];
-				SrcY1 = ArgInfo.PtY[ARGPT_SRC1];
+		if(argInfo.flag[ARGFLAG_DTSP]){	/* Command Line 引数に必要事項が書かれていたとき */
+			if(argInfo.flag[ARGFLAG_SRCPTN1]){
+				*srcX1 = argInfo.ptX[ARGPT_SRC1];
+				*srcY1 = argInfo.ptY[ARGPT_SRC1];
 			}else{
-				SrcX1 = 0;
-				SrcY1 = 0;
+				*srcX1 = 0;
+				*srcY1 = 0;
 			}
-			SrcX1 += RegionMsk.x1;
-			SrcY1 += RegionMsk.y1;
-			TrgX1 = ArgInfo.PtX[ARGPT_DTS] + SrcX1;
-			TrgY1 = ArgInfo.PtY[ARGPT_DTS] + SrcY1;
+			*srcX1 += regionMsk->x1;
+			*srcY1 += regionMsk->y1;
+			*trgX1 = argInfo.ptX[ARGPT_DTS] + *srcX1;
+			*trgY1 = argInfo.ptY[ARGPT_DTS] + *srcY1;
 		}else{
 			while(true){
-				fprintf(stderr, "マスク画像 (%s) の左上端は合成元画像 (%s) 上のどの点ですか? (x, y):\n", ArgInfo.FileArgv[FILEARGV_MSK], ArgInfo.FileArgv[FILEARGV_SRC]);
+				fprintf(stderr, "マスク画像 (%s) の左上端は合成元画像 (%s) 上のどの点ですか? (x, y):\n", argInfo.fileArgv[FILEARGV_MSK], argInfo.fileArgv[FILEARGV_SRC]);
 				fputs("x = ", stderr);
-				SrcX1 = inputInt(stdin);
+				*srcX1 = inputIntFromFILE(stdin);
 				fputs("y = ", stderr);
-				SrcY1 = inputInt(stdin);
-				fprintf(stderr, "マスク画像上のマスク領域を囲む長方形は、マスク画像上の点 (%d,%d)~(%d,%d) であると判断しました。\n", RegionMsk.x1, RegionMsk.y1, RegionMsk.x1 + RegionMsk.GetWidth() - 1, RegionMsk.y1 + RegionMsk.GetHeight() - 1);
-				SrcX1 += RegionMsk.x1;
-				SrcY1 += RegionMsk.y1;
-				SrcX2 = SrcX1 + RegionMsk.GetWidth() - 1;
-				SrcY2 = SrcY1 + RegionMsk.GetHeight() - 1;
-				fprintf(stderr, "よって、合成元画像上での合成領域を囲む長方形は、合成元画像上の点 (%d,%d)~(%d,%d) となります。\n", SrcX1, SrcY1, SrcX2, SrcY2);
+				*srcY1 = inputIntFromFILE(stdin);
+				fprintf(stderr, "マスク画像上のマスク領域を囲む長方形は、マスク画像上の点 (%d,%d)~(%d,%d) であると判断しました。\n", regionMsk->x1, regionMsk->y1, regionMsk->x1 + regionMsk->getWidth() - 1, regionMsk->y1 + regionMsk->getHeight() - 1);
+				*srcX1 += regionMsk->x1;
+				*srcY1 += regionMsk->y1;
+				srcX2 = *srcX1 + regionMsk->getWidth() - 1;
+				srcY2 = *srcY1 + regionMsk->getHeight() - 1;
+				fprintf(stderr, "よって、合成元画像上での合成領域を囲む長方形は、合成元画像上の点 (%d,%d)~(%d,%d) となります。\n", *srcX1, *srcY1, srcX2, srcY2);
 
-				fprintf(stderr, "合成対象画像 (%s) 上の点 (xt, yt) と合成元画像上の点 (xs, ys) のズレ (Δx, Δy) = (xt - xs, yt - ys) :\n", ArgInfo.FileArgv[FILEARGV_TRG]);
+				fprintf(stderr, "合成対象画像 (%s) 上の点 (xt, yt) と合成元画像上の点 (xs, ys) のズレ (Δx, Δy) = (xt - xs, yt - ys) :\n", argInfo.fileArgv[FILEARGV_TRG]);
 				fputs("Δx = ", stderr);
-				TrgX1 = inputInt(stdin);
+				*trgX1 = inputIntFromFILE(stdin);
 				fputs("Δy = ", stderr);
-				TrgY1 = inputInt(stdin);
-				TrgX1 += SrcX1; TrgX2 = TrgX1 + (int)RegionMsk.GetWidth() - 1;
-				TrgY1 += SrcY1; TrgY2 = TrgY1 + (int)RegionMsk.GetHeight() - 1;
-				fprintf(stderr, "よって、対象画像上のマスク領域を囲む長方形は、対象画像上の点 (%d,%d)~(%d,%d) となります。\n", TrgX1, TrgY1, TrgX2, TrgY2);
+				*trgY1 = inputIntFromFILE(stdin);
+				*trgX1 += *srcX1; trgX2 = *trgX1 + static_cast<int>(regionMsk->getWidth()) - 1;
+				*trgY1 += *srcY1; trgY2 = *trgY1 + static_cast<int>(regionMsk->getHeight()) - 1;
+				fprintf(stderr, "よって、対象画像上のマスク領域を囲む長方形は、対象画像上の点 (%d,%d)~(%d,%d) となります。\n", *trgX1, *trgY1, trgX2, trgY2);
 
 				fputs("\n設定は以上でよろしいですか? [Y/N]:", stderr);
 				myFgets(yn, sizeof(yn) / sizeof(yn[0]), stdin);
@@ -410,203 +400,203 @@ int SetRegionMask_BeforeCompose(class BitMask_t &RegionMsk, struct ArgInfo_t &Ar
 	return 0;
 }
 
-int PIE_Main(struct ArgInfo_t &ArgInfo){
-	class Image_t SrcImg, TrgImg;
-	class ImageSig_t SrcLap;
-	class BitMask_t RegionMsk;
-	int SrcX1, SrcY1, SrcX2, SrcY2, TrgX1, TrgY1, TrgX2, TrgY2;
-	std::string OutputFileName;
+int pIE_Main(const ArgInfo &argInfo){
+	Image srcImg, trgImg;
+	ImageSig srcLap;
+	BitMask regionMsk;
+	int srcX1, srcY1, trgX1, trgY1;
+	std::string outputFileName;
 
 	/* 引数判定・合成領域指定 */
-	if(SetRegionMask_BeforeCompose(RegionMsk, ArgInfo, SrcX1, SrcY1, TrgX1, TrgY1)){
+	if(setRegionMask_BeforeCompose(&regionMsk, argInfo, &srcX1, &srcY1, &trgX1, &trgY1)){
 		return 1;
 	}
-	SrcX2 = SrcX1 + RegionMsk.GetWidth() - 1; SrcY2 = SrcY1 + RegionMsk.GetHeight() - 1;
-	TrgX2 = TrgX1 + RegionMsk.GetWidth() - 1; TrgY2 = TrgY1 + RegionMsk.GetHeight() - 1;
+	const int srcX2 = srcX1 + regionMsk.getWidth() - 1, srcY2 = srcY1 + regionMsk.getHeight() - 1,
+		trgX2 = trgX1 + regionMsk.getWidth() - 1, tgY2 = trgY1 + regionMsk.getHeight() - 1;
 
 	/* BMP の読込 */
-	if(SrcImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_SRC])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_SRC]);
+	if(srcImg.read_Bmp(argInfo.fileArgv[FILEARGV_SRC].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_SRC]);
 		return 1;
 	}
-	if(ArgInfo.Flag[ARGFLAG_GS]){
-		if(SrcImg.MakeIntoGrayscale()){
+	if(argInfo.flag[ARGFLAG_GS]){
+		if(srcImg.makeIntoGrayscale()){
 			return 1;
 		}
 	}
-	if(SrcX1 < 0 || SrcY1 < 0 || SrcX2 >= (int)SrcImg.GetWidth() || SrcY2 >= (int)SrcImg.GetHeight()){
+	if(srcX1 < 0 || srcY1 < 0 || srcX2 >= static_cast<int>(srcImg.getWidth()) || srcY2 >= static_cast<int>(srcImg.getHeight())){
 		fputs("ERROR: 指定した領域が画像の範囲外です。\n", stderr);
 		return 1;
 	}
-	if(TrgImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_TRG])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_TRG]);
+	if(trgImg.read_Bmp(argInfo.fileArgv[FILEARGV_TRG].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_TRG]);
 		return 1;
 	}
-	if(TrgX1 < 0 || TrgY1 < 0 || TrgX2 >= (int)TrgImg.GetWidth() || TrgY2 >= (int)TrgImg.GetHeight()){
+	if(trgX1 < 0 || trgY1 < 0 || trgX2 >= static_cast<int>(trgImg.getWidth()) || tgY2 >= static_cast<int>(trgImg.getHeight())){
 		fputs("ERROR: 指定した領域が画像の範囲外です。\n", stderr);
 		return 1;
 	}
 
 	/* Filter 前処理 */
-	if(SrcLap.Create_Image(SrcX2 - SrcX1 + 1, SrcY2 - SrcY1 + 1)){
+	if(srcLap.create_Image(srcX2 - srcX1 + 1, srcY2 - srcY1 + 1)){
 		return 1;
 	}
-	if(!ArgInfo.Flag[ARGFLAG_MIX]){
-		if(SrcLap.LapFilter(SrcImg, SrcX1, SrcY1) != 0){
+	if(!argInfo.flag[ARGFLAG_MIX]){
+		if(srcLap.lapFilter(&srcImg, srcX1, srcY1) != 0){
 			return 1;
 		}
 	}else{	/* 元画像と対象画像の Filter の混合 */
-		if(SrcLap.SelectStrongerGradientAndMix(SrcImg, SrcX1, SrcY1, TrgImg, TrgX1, TrgY1)){
+		if(srcLap.selectStrongerGradientAndMix(&srcImg, srcX1, srcY1, &trgImg, trgX1, trgY1)){
 			return 1;
 		}
 	}
-	if(ArgInfo.Flag[ARGFLAG_AMP]){	/* 増幅 */
-		if(SrcLap.AmplifyFilter(ArgInfo.AmpN)){
+	if(argInfo.flag[ARGFLAG_AMP]){	/* 増幅 */
+		if(srcLap.amplifyFilter(argInfo.ampN)){
 			return 1;
 		}
 	}
 	/* 画像処理 */
-	if(SolvePoisson(TrgImg, SrcLap, TrgX1, TrgY1, RegionMsk) != 0){
+	if(solvePoisson(&trgImg, &srcLap, trgX1, trgY1, &regionMsk) != 0){
 		return 1;
 	}
 
 	/* trgImg を BMP に出力 */
-	if(ArgInfo.Flag[ARGFLAG_OUTIMG]){
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_OUT];
+	if(argInfo.flag[ARGFLAG_OUTIMG]){
+		outputFileName = argInfo.fileArgv[FILEARGV_OUT];
 	}else{
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_TRG];
-		OutputFileName += "_pie.bmp";
+		outputFileName = argInfo.fileArgv[FILEARGV_TRG];
+		outputFileName += "_pie.bmp";
 	}
-	if(TrgImg.Write_Bmp((char *)OutputFileName.c_str())){
-		fprintf(stderr, "ERROR: Cannot write the file %s.\n", OutputFileName.c_str());
+	if(trgImg.write_Bmp(outputFileName.c_str())){
+		fprintf(stderr, "ERROR: Cannot write the file %s.\n", outputFileName.c_str());
 		return 1;
 	}
 
 	return 0;
 }
 
-int StCm_Main(struct ArgInfo_t &ArgInfo){
-	class Image_t SrcImg, TrgImg;
-	class BitMask_t RegionMsk;
-	int SrcX1, SrcY1, SrcX2, SrcY2, TrgX1, TrgY1, TrgX2, TrgY2;
-	std::string OutputFileName;
+int stCm_Main(const ArgInfo &argInfo){
+	Image srcImg, trgImg;
+	BitMask regionMsk;
+	int srcX1, srcY1, trgX1, trgY1;
+	std::string outputFileName;
 
 	/* 引数判定・合成領域指定 */
-	if((SetRegionMask_BeforeCompose(RegionMsk, ArgInfo, SrcX1, SrcY1, TrgX1, TrgY1))){
+	if((setRegionMask_BeforeCompose(&regionMsk, argInfo, &srcX1, &srcY1, &trgX1, &trgY1))){
 		return 1;
 	}
-	SrcX2 = SrcX1 + RegionMsk.GetWidth() - 1; SrcY2 = SrcY1 + RegionMsk.GetHeight() - 1;
-	TrgX2 = TrgX1 + RegionMsk.GetWidth() - 1; TrgY2 = TrgY1 + RegionMsk.GetHeight() - 1;
+	const int srcX2 = srcX1 + regionMsk.getWidth() - 1, srcY2 = srcY1 + regionMsk.getHeight() - 1,
+		trgX2 = trgX1 + regionMsk.getWidth() - 1, trgY2 = trgY1 + regionMsk.getHeight() - 1;
 
 	/* BMP の読込 */
-	if(SrcImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_SRC])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_SRC]);
+	if(srcImg.read_Bmp(argInfo.fileArgv[FILEARGV_SRC].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_SRC]);
 		return 1;
 	}
-	if(SrcX1 < 0 || SrcY1 < 0 || SrcX2 >= (int)SrcImg.GetWidth() || SrcY2 >= (int)SrcImg.GetHeight()){
+	if(srcX1 < 0 || srcY1 < 0 || srcX2 >= static_cast<int>(srcImg.getWidth()) || srcY2 >= static_cast<int>(srcImg.getHeight())){
 		fputs("ERROR: 指定した領域が画像の範囲外です。\n", stderr);
 		return 1;
 	}
-	if(TrgImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_TRG])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_TRG]);
+	if(trgImg.read_Bmp(argInfo.fileArgv[FILEARGV_TRG].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_TRG]);
 		return 1;
 	}
-	if(TrgX1 < 0 || TrgY1 < 0 || TrgX2 >= (int)TrgImg.GetWidth() || TrgY2 >= (int)TrgImg.GetHeight()){
+	if(trgX1 < 0 || trgY1 < 0 || trgX2 >= static_cast<int>(trgImg.getWidth()) || trgY2 >= static_cast<int>(trgImg.getHeight())){
 		fputs("ERROR: 指定した領域が画像の範囲外です。\n", stderr);
 		return 1;
 	}
 
 	/* 画像処理 */
-	if(StraightCompose(TrgImg, TrgX1, TrgY1, SrcImg, SrcX1, SrcY1, RegionMsk) != 0){
+	if(straightCompose(&trgImg, trgX1, trgY1, &srcImg, srcX1, srcY1, &regionMsk) != 0){
 		return 1;
 	}
 
 	/* trgImg を BMP に出力 */
-	if(ArgInfo.Flag[ARGFLAG_OUTIMG]){
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_OUT];
+	if(argInfo.flag[ARGFLAG_OUTIMG]){
+		outputFileName = argInfo.fileArgv[FILEARGV_OUT];
 	}else{
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_TRG];
-		OutputFileName += "_stcm.bmp";
+		outputFileName = argInfo.fileArgv[FILEARGV_TRG];
+		outputFileName += "_stcm.bmp";
 	}
-	if(TrgImg.Write_Bmp((char *)OutputFileName.c_str())){
-		fprintf(stderr, "ERROR: Cannot write the file %s.\n", OutputFileName.c_str());
+	if(trgImg.write_Bmp(outputFileName.c_str())){
+		fprintf(stderr, "ERROR: Cannot write the file %s.\n", outputFileName.c_str());
 		return 1;
 	}
 
 	return 0;
 }
 
-int bmp2bmp_lap(struct ArgInfo_t &ArgInfo){
+int bmp2bmp_lap(const ArgInfo &argInfo){
 	/* 変数宣言 */
-	class Image_t ColorImg;	/* 画像 */
-	class ImageSig_t LapImg;	/* Laplacian */
-	std::string OutputFileName;	/* 出力 file 名 */
+	Image colorImg;	/* 画像 */
+	ImageSig lapImg;	/* Laplacian */
+	std::string outputFileName;	/* 出力 file 名 */
 	fputs("BMP2BMP (Laplacian Image)\n", stderr);
 
 	/* 画像 file を ColorImg に入力 */
-	if(ColorImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_SRC])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_SRC]);
+	if(colorImg.read_Bmp(argInfo.fileArgv[FILEARGV_SRC].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_SRC]);
 		return 1;
 	}
 	/* BMP と同じ size の符号付画像を作成 */
-	if(LapImg.Create_Image(ColorImg.GetWidth(), ColorImg.GetHeight())){
+	if(lapImg.create_Image(colorImg.getWidth(), colorImg.getHeight())){
 		fputs("ERROR\n", stderr);
 		return 1;
 	}
 
 	/* 画像処理 */
-	if((LapImg.LapFilter(ColorImg, 0, 0)) != 0){
+	if((lapImg.lapFilter(&colorImg, 0, 0)) != 0){
 		return 1;
 	}
-	for(int y = 0; y < (int)ColorImg.GetHeight(); ++y){
-		for(int x = 0; x < (int)ColorImg.GetWidth(); ++x){
+	for(int y = 0; y < static_cast<int>(colorImg.getHeight()); ++y){
+		for(int x = 0; x < static_cast<int>(colorImg.getWidth()); ++x){
 			for(int i = 0; i < 3; ++i){
-				ColorImg.SetData_NoSecure(x, y, i, minNum((int)abs(LapImg.GetData_NoSecure(x, y, i)), 255));
+				colorImg.setData_NoSecure(x, y, i, std::min(static_cast<int>(std::abs(lapImg.getData_NoSecure(x, y, i))), 255));
 			}
 		}
 	}
 
 	/* ColorImg を画像 file に出力 */
-	if(ArgInfo.Flag[ARGFLAG_OUTIMG]){
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_OUT];
+	if(argInfo.flag[ARGFLAG_OUTIMG]){
+		outputFileName = argInfo.fileArgv[FILEARGV_OUT];
 	}else{
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_SRC];
-		OutputFileName += "_lap.bmp";
+		outputFileName = argInfo.fileArgv[FILEARGV_SRC];
+		outputFileName += "_lap.bmp";
 	}
-	if(ColorImg.Write_Bmp((char *)OutputFileName.c_str())){
-		fprintf(stderr, "ERROR: Cannot write the file %s.\n", OutputFileName.c_str());
+	if(colorImg.write_Bmp(outputFileName.c_str())){
+		fprintf(stderr, "ERROR: Cannot write the file %s.\n", outputFileName.c_str());
 		return 1;
 	}
 
 	return 0;
 }
 
-int bmp2bmp_gs(struct ArgInfo_t &ArgInfo){
+int bmp2bmp_gs(const ArgInfo &argInfo){
 	/* 変数宣言 */
-	class Image_t ColorImg;	/* 画像 */
-	std::string OutputFileName;	/* 出力 file 名 */
+	Image colorImg;	/* 画像 */
+	std::string outputFileName;	/* 出力 file 名 */
 	fputs("BMP2BMP (Grayscale Image)\n", stderr);
 
 	/* 画像 file を ColorImg に入力 */
-	if(ColorImg.Read_Bmp(ArgInfo.FileArgv[FILEARGV_SRC])){
-		fprintf(stderr, "ERROR: Cannot read the file %s.\n", ArgInfo.FileArgv[FILEARGV_SRC]);
+	if(colorImg.read_Bmp(argInfo.fileArgv[FILEARGV_SRC].c_str())){
+		fprintf(stderr, "ERROR: Cannot read the file %s.\n", argInfo.fileArgv[FILEARGV_SRC].c_str());
 		return 1;
 	}
 
 	/* 画像処理 */
-	if(ColorImg.MakeIntoGrayscale()){
+	if(colorImg.makeIntoGrayscale()){
 		return 1;
 	}
 
 	/* ColorImg を画像 file に出力 */
-	if(ArgInfo.Flag[ARGFLAG_OUTIMG]){
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_OUT];
+	if(argInfo.flag[ARGFLAG_OUTIMG]){
+		outputFileName = argInfo.fileArgv[FILEARGV_OUT];
 	}else{
-		OutputFileName = ArgInfo.FileArgv[FILEARGV_SRC];
-		OutputFileName += "_gs.bmp";
+		outputFileName = argInfo.fileArgv[FILEARGV_SRC];
+		outputFileName += "_gs.bmp";
 	}
-	if(ColorImg.Write_Bmp((char *)OutputFileName.c_str())){
-		fprintf(stderr, "ERROR: Cannot write the file %s.\n", OutputFileName.c_str());
+	if(colorImg.write_Bmp(outputFileName.c_str())){
+		fprintf(stderr, "ERROR: Cannot write the file %s.\n", outputFileName.c_str());
 		return 1;
 	}
 

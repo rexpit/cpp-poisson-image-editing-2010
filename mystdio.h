@@ -16,6 +16,6 @@
 */
 char *myFgets(char *s, int n, FILE *fp);
 
-int inputInt(FILE *fp);
+int inputIntFromFILE(FILE *fp);
 
 #endif /* _MYSTD_H_ */

@@ -1,27 +1,28 @@
 
 #include "bitmask.h"
+#define	NULL	0
 
 typedef unsigned char byte;
 typedef unsigned int uint;
 
 /* 単一色画像データを取得 */
-int BitMask_t::Create_Image(int width, int height){
-	this->Free_Image();
+int BitMask::create_Image(int width, int height){
+	this->free_Image();
 	try{
 		this->data = new byte[width * height];
 	}catch(...){
 		return 1;
 	}
 
-	this->width = (uint)width;
-	this->height = (uint)height;
-	this->TruePixelNum = 0;
+	this->width = static_cast<uint>(width);
+	this->height = static_cast<uint>(height);
+	this->truePixelNum = 0;
 
 	return 0;
 }
 
 /* 単一色画像データの解放 */
-void BitMask_t::Free_Image(void){
+void BitMask::free_Image(void){
 	if(this->data != NULL){
 		delete [] this->data;
 		this->data = NULL;
@@ -29,39 +30,37 @@ void BitMask_t::Free_Image(void){
 	return;
 }
 
-byte BitMask_t::GetData(int x, int y) {
+byte BitMask::getData(int x, int y) {
 	if(this->data == NULL) { return 0; }
-	if(x < 0 || x >= (int)this->width || y < 0 || y >= (int)this->height) { return 0; }
-	return GetData_NoSecure(x, y);
+	if(x < 0 || x >= static_cast<int>(this->width) || y < 0 || y >= static_cast<int>(this->height)) { return 0; }
+	return getData_NoSecure(x, y);
 }
 
-byte BitMask_t::GetData_NoSecure(int x, int y) {
-	return this->data[y * (int)this->width + x];
+byte BitMask::getData_NoSecure(int x, int y) {
+	return this->data[y * static_cast<int>(this->width) + x];
 }
 
-void BitMask_t::SetData(int x, int y, byte Color){
+void BitMask::setData(int x, int y, byte color){
 	if(this->data == NULL) { return; }
-	if(x < 0 || x >= (int)this->width || y < 0 || y >= (int)this->height) { return; }
-	this->SetData_NoSecure(x, y, Color);
+	if(x < 0 || x >= static_cast<int>(this->width) || y < 0 || y >= static_cast<int>(this->height)) { return; }
+	this->setData_NoSecure(x, y, color);
 }
 
-void BitMask_t::SetData_NoSecure(int x, int y, byte Color){
-	this->data[y * (int)this->width + x] = Color;
+void BitMask::setData_NoSecure(int x, int y, byte color){
+	this->data[y * static_cast<int>(this->width) + x] = color;
 }
 
 /* カラー画像の明るい部分を偽(0)、暗い部分を真(1)とする。 */
-int BitMask_t::Img2Mask(class Image_t &srcImg)
+int BitMask::img2Mask(Image *srcImg)
 {
-	int x, y, x1, y1, x2, y2, count;
-
-	if(!srcImg.CheckReserve()){
+	if(!srcImg->checkReserve()){
 		return 1;
 	}
-	x1 = (int)srcImg.GetWidth() - 1; y1 = (int)srcImg.GetHeight() - 1; x2 = 0; y2 = 0;
+	int x1 = static_cast<int>(srcImg->getWidth()) - 1, y1 = static_cast<int>(srcImg->getHeight()) - 1, x2 = 0, y2 = 0;
 
-	for(y = 0; y < (int)srcImg.GetHeight(); ++y){
-		for(x = 0; x < (int)srcImg.GetWidth(); ++x){
-			if(RGB2Grayscale(srcImg.GetData(x, y, 0), srcImg.GetData(x, y, 1), srcImg.GetData(x, y, 2)) < 128){
+	for(int y = 0; y < static_cast<int>(srcImg->getHeight()); ++y){
+		for(int x = 0; x < static_cast<int>(srcImg->getWidth()); ++x){
+			if(rGB2Grayscale(srcImg->getData(x, y, 0), srcImg->getData(x, y, 1), srcImg->getData(x, y, 2)) < 128){
 				if(x < x1) { x1 = x; }
 				if(y < y1) { y1 = y; }
 				if(x > x2) { x2 = x; }
@@ -70,75 +69,74 @@ int BitMask_t::Img2Mask(class Image_t &srcImg)
 		}
 	}
 
-	if(this->Create_Image(x2 - x1 + 1, y2 - y1 + 1)){
+	if(this->create_Image(x2 - x1 + 1, y2 - y1 + 1)){
 		return 1;
 	}
 	this->x1 = x1; this->y1 = y1;
 
-	count = 0;
-	for(y = 0; y < (int)this->height; ++y){
-		for(x = 0; x < (int)this->width; ++x){
-			if(RGB2Grayscale(srcImg.GetData(x1 + x, y1 + y, 0), srcImg.GetData(x1 + x, y1 + y, 1), srcImg.GetData(x1 + x, y1 + y, 2)) < 128){
-				this->SetData_NoSecure(x, y, 1);
+	int count = 0;
+	for(int y = 0; y < static_cast<int>(this->height); ++y){
+		for(int x = 0; x < static_cast<int>(this->width); ++x){
+			if(rGB2Grayscale(srcImg->getData(x1 + x, y1 + y, 0), srcImg->getData(x1 + x, y1 + y, 1), srcImg->getData(x1 + x, y1 + y, 2)) < 128){
+				this->setData_NoSecure(x, y, 1);
 				++count;
 			}else{
-				this->SetData_NoSecure(x, y, 0);
+				this->setData_NoSecure(x, y, 0);
 			}
 		}
 	}
 
-	this->TruePixelNum = count;
+	this->truePixelNum = count;
 
 	return 0;
 }
 
-void BitMask_t::Fill_BitMask(void){
-	int i, end;
+void BitMask::fill_BitMask(void){
 	if(this->data == NULL){ return; }
-	end = (int)this->width * (int)this->height;
-	for(i = 0; i < end; ++i){
+	const int end = static_cast<int>(this->width) * static_cast<int>(this->height);
+	for(int i = 0; i < end; ++i){
 		this->data[i] = 1;
 	}
-	this->TruePixelNum = this->width * this->height;
+	this->truePixelNum = this->width * this->height;
 }
 
-bool BitMask_t::CheckReserve(void){
+bool BitMask::checkReserve(void){
 	return this->data != NULL;
 }
 
-unsigned int BitMask_t::GetTruePixelNum(void){
-	return this->TruePixelNum;
+unsigned int BitMask::getTruePixelNum(void){
+	return this->truePixelNum;
 }
 
-BitMask_t &BitMask_t::operator=(BitMask_t &Src){
-	int x, y, w, h; bool flagTemp = true;
-	if(!Src.CheckReserve()){
+BitMask &BitMask::operator=(BitMask &src){
+	bool flagTemp = true;
+	if(!src.checkReserve()){
 		throw "Cannot copy.";
 	}
 	if(this->data != NULL){
-		if(this->width == Src.GetWidth() && this->height == Src.GetHeight()){
+		if(this->width == src.getWidth() && this->height == src.getHeight()){
 			flagTemp = false;
 		}
 	}
 	if(flagTemp){
-		if(this->Create_Image((int)Src.GetWidth(), (int)Src.GetHeight())){
+		if(this->create_Image(static_cast<int>(src.getWidth()), static_cast<int>(src.getHeight()))){
 			throw "Cannot copy.";
 		}
 	}
-	w = (int)this->width; h = (int)this->height;
-	for(y = 0; y < h; ++y){
-		for(x = 0; x < w; ++x){
-			this->SetData_NoSecure(x, y, Src.GetData_NoSecure(x, y));
+	const int w = static_cast<int>(this->width), h = static_cast<int>(this->height);
+	for(int y = 0; y < h; ++y){
+		for(int x = 0; x < w; ++x){
+			this->setData_NoSecure(x, y, src.getData_NoSecure(x, y));
 		}
 	}
 	return *this;
 }
 
-BitMask_t::BitMask_t(void){
+BitMask::BitMask(void){
 	this->data = NULL;
 }
 
-BitMask_t::~BitMask_t(void){
+BitMask::~BitMask(void){
 	if(this->data != NULL){
 		delete [] this->data;
 		this->data = NULL;

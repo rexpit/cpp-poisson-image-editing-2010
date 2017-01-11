@@ -1,6 +1,8 @@
 
 #pragma warning( disable : 4996 )	/* fopen の警告抑制 (VC++) */
 #include "filter.h"
+#include <cmath>	/* sqrt, abs のため */
+#include <algorithm>	/* max, min のため */
 #include <cstdio>
 
 typedef unsigned char byte;
@@ -8,48 +10,42 @@ typedef unsigned int uint;
 
 /* ↓ここから ImageSig_t */
 
-int ImageSig_t::GetData(int x, int y, int ColorId) {
-	if(x < 0 || x >= (int)this->width || y < 0 || y >= (int)this->height) { return 0; }
-	return GetData_NoSecure(x, y, ColorId);
+int ImageSig::getData(int x, int y, int colorId) {
+	if(x < 0 || x >= static_cast<int>(this->width) || y < 0 || y >= static_cast<int>(this->height)) { return 0; }
+	return getData_NoSecure(x, y, colorId);
 }
 
-int ImageSig_t::GetData_NoSecure(int x, int y, int ColorId) {
-	int Idx, Color;
-	Idx = y * (int)this->width + x;
-	switch(ColorId){
+int ImageSig::getData_NoSecure(int x, int y, int colorId) {
+	const int idx = y * static_cast<int>(this->width) + x;
+	switch(colorId){
 		case 0:
-			Color = this->data[Idx].r;
-			break;
+			return this->data[idx].r;
 		case 1:
-			Color = this->data[Idx].g;
-			break;
+			return this->data[idx].g;
 		case 2:
-			Color = this->data[Idx].b;
-			break;
+			return this->data[idx].b;
 		default:
-			Color = 0;
-			break;
+			return 0;
 	}
-	return Color;
 }
 
-void ImageSig_t::SetData(int x, int y, int ColorId, int Color) {
-	if(x < 0 || x >= (int)this->width || y < 0 || y >= (int)this->height) { return; }
-	SetData_NoSecure(x, y, ColorId, Color);
+void ImageSig::setData(int x, int y, int colorId, int color) {
+	if(x < 0 || x >= static_cast<int>(this->width) || y < 0 || y >= static_cast<int>(this->height)) { return; }
+	setData_NoSecure(x, y, colorId, color);
 	return;
 }
 
-void ImageSig_t::SetData_NoSecure(int x, int y, int ColorId, int Color) {
-	int Idx = y * (int)this->width + x;
-	switch(ColorId){
+void ImageSig::setData_NoSecure(int x, int y, int colorId, int color) {
+	const int idx = y * static_cast<int>(this->width) + x;
+	switch(colorId){
 		case 0:
-			this->data[Idx].r = Color;
+			this->data[idx].r = color;
 			break;
 		case 1:
-			this->data[Idx].g = Color;
+			this->data[idx].g = color;
 			break;
 		case 2:
-			this->data[Idx].b = Color;
+			this->data[idx].b = color;
 			break;
 		default:
 			break;
@@ -57,10 +53,10 @@ void ImageSig_t::SetData_NoSecure(int x, int y, int ColorId, int Color) {
 	return;
 }
 
-int ImageSig_t::Create_Image(int width, int height) {
-	this->Free_Image();
+int ImageSig::create_Image(int width, int height) {
+	this->free_Image();
 	try{
-		this->data = new RgbSig_t[width * height];
+		this->data = new RGBSig[width * height];
 	}catch(...){
 		this->data = NULL;
 		return 1;
@@ -72,7 +68,7 @@ int ImageSig_t::Create_Image(int width, int height) {
 	return 0;
 }
 
-void ImageSig_t::Free_Image(void) {
+void ImageSig::free_Image(void) {
 	if(this->data != NULL){
 		delete [] this->data;
 		this->data = NULL;
@@ -80,32 +76,35 @@ void ImageSig_t::Free_Image(void) {
 	return;
 }
 
-int ImageSig_t::LapFilter(Image_t &src, int x1, int y1) {
+int ImageSig::lapFilter(Image *src, int x1, int y1) {
 	const char dx[] = {0,-1,0,1,0}, dy[] = {-1,0,0,0,1}, h[] = {1,1,-4,1,1};
-	int x, y, mx, my, i, j, x2, y2, sum[3];
+	int sum[3];
 
 	if(this->data == NULL){ return 1; }
-	x2 = x1 + (int)this->width - 1; y2 = y1 + (int)this->height - 1;
-	if(x1 < 0 || x2 >= (int)src.GetWidth() || y1 < 0 || y2 >= (int)src.GetHeight()){ return 1; /* 失敗 */ }
+	const int x2 = x1 + static_cast<int>(this->width) - 1,
+		y2 = y1 + static_cast<int>(this->height) - 1;
+	if(x1 < 0 || x2 >= static_cast<int>(src->getWidth()) || y1 < 0 || y2 >= static_cast<int>(src->getHeight())) {
+		return 1; /* 失敗 */
+	}
 
-	for(y = 0; y < (int)this->height; ++y){
-		for(x = 0; x < (int)this->width; ++x){
+	for(int y = 0; y < (int)this->height; ++y){
+		for(int x = 0; x < (int)this->width; ++x){
 			sum[0] = sum[1] = sum[2] = 0;
-			for(i = 0; i < 5; ++i){
-				mx = x + dx[i];
-				my = y + dy[i];
-				if(x1 + mx < 0 || x1 + mx >= (int)src.GetWidth()){	/* 画像外のとき */
+			for(int i = 0; i < 5; ++i){
+				int mx = x + dx[i];
+				int my = y + dy[i];
+				if(x1 + mx < 0 || x1 + mx >= static_cast<int>(src->getWidth())){	/* 画像外のとき */
 					mx = x;
 				}
-				if(y1 + my < 0 || y1 + my >= (int)src.GetHeight()){	/* 画像外のとき */
+				if(y1 + my < 0 || y1 + my >= static_cast<int>(src->getHeight())){	/* 画像外のとき */
 					my = y;
 				}
-				for(j = 0; j < 3; ++j){
-					sum[j] += h[i] * (int)src.GetData_NoSecure(x1 + mx, y1 + my, j);
+				for(int j = 0; j < 3; ++j){
+					sum[j] += h[i] * static_cast<int>(src->getData_NoSecure(x1 + mx, y1 + my, j));
 				}
 			}
-			for(i = 0; i < 3; ++i){
-				this->SetData_NoSecure(x, y, i, sum[i]);
+			for(int i = 0; i < 3; ++i){
+				this->setData_NoSecure(x, y, i, sum[i]);
 			}
 		}
 	}
@@ -113,71 +112,68 @@ int ImageSig_t::LapFilter(Image_t &src, int x1, int y1) {
 	return 0;
 }
 
-int ImageSig_t::AmplifyFilter(double n) {
-	int x, y, w, h, idx;
-
+int ImageSig::amplifyFilter(double n) {
 	if(this->data == NULL){ return 1; }
-	w = (int)this->width; h = (int)this->height;
-	for(y = 0; y < h; ++y){
-		for(x = 0; x < w; ++x){
-			idx = y * w + x;
-			this->data[idx].r = (int)(n * (double)this->data[idx].r);
-			this->data[idx].g = (int)(n * (double)this->data[idx].g);
-			this->data[idx].b = (int)(n * (double)this->data[idx].b);
+	const int w = static_cast<int>(this->width), h = static_cast<int>(this->height);
+	for(int y = 0; y < h; ++y) {
+		for(int x = 0; x < w; ++x) {
+			const int idx = y * w + x;
+			this->data[idx].r = static_cast<int>(n * static_cast<double>(this->data[idx].r));
+			this->data[idx].g = static_cast<int>(n * static_cast<double>(this->data[idx].g));
+			this->data[idx].b = static_cast<int>(n * static_cast<double>(this->data[idx].b));
 		}
 	}
 
 	return 0;
 }
 
-int ImageSig_t::SelectStrongerGradientAndMix(class Image_t &SrcImg1, int X11, int Y11, class Image_t &SrcImg2, int X21, int Y21) {
-	class ImageSig_t DiffX, DiffY;
-	int x, y, i, diffX1, diffY1, diffX2, diffY2;
+int ImageSig::selectStrongerGradientAndMix(class Image *srcImg1, int x11, int y11, class Image *srcImg2, int x21, int y21) {
+	class ImageSig DiffX, DiffY;
 
 	if(this->data == NULL){ return 1; }
 	const int w = this->width, h = this->height;
-	if(X11 < 0 || X11 + w - 1 >= (int)SrcImg1.GetWidth() || Y11 < 0 || Y11 + h - 1 >= (int)SrcImg1.GetHeight()){
+	if(x11 < 0 || x11 + w - 1 >= static_cast<int>(srcImg1->getWidth()) || y11 < 0 || y11 + h - 1 >= static_cast<int>(srcImg1->getHeight())){
 		return 1;
 	}
-	if(X21 < 0 || X21 + w - 1 >= (int)SrcImg2.GetWidth() || Y21 < 0 || Y21 + h - 1 >= (int)SrcImg2.GetHeight()){
+	if(x21 < 0 || x21 + w - 1 >= static_cast<int>(srcImg2->getWidth()) || y21 < 0 || y21 + h - 1 >= static_cast<int>(srcImg2->getHeight())){
 		return 1;
 	}
 	/* grad の差分は +1 から、 div の差分は -1 からやるため、 1 pixel 余分に取る。 */
-	if(DiffX.Create_Image(1 + w, 1 + h)){
+	if(DiffX.create_Image(1 + w, 1 + h)){
 		return 1;
 	}
-	if(DiffY.Create_Image(1 + w, 1 + h)){
+	if(DiffY.create_Image(1 + w, 1 + h)){
 		return 1;
 	}
 
 	/* grad の計算・選択 */
-	for(y = -1; y < h; ++y){
-		for(x = -1; x < w; ++x){
-			for(i = 0; i < 3; ++i){
+	for(int y = -1; y < h; ++y){
+		for(int x = -1; x < w; ++x){
+			for(int i = 0; i < 3; ++i){
 				int sum1 = 0, sum2 = 0;
-				diffX1 = SrcImg1.GetData(X11 + x + 1, Y11 + y, i) - SrcImg1.GetData(X11 + x, Y11 + y, i);
-				diffY1 = SrcImg1.GetData(X11 + x, Y11 + y + 1, i) - SrcImg1.GetData(X11 + x, Y11 + y, i);
+				const int diffX1 = srcImg1->getData(x11 + x + 1, y11 + y, i) - srcImg1->getData(x11 + x, y11 + y, i),
+					diffY1 = srcImg1->getData(x11 + x, y11 + y + 1, i) - srcImg1->getData(x11 + x, y11 + y, i);
 				sum1 += diffX1 * diffX1 + diffY1 * diffY1;
-				diffX2 = SrcImg2.GetData(X21 + x + 1, Y21 + y, i) - SrcImg2.GetData(X21 + x, Y21 + y, i);
-				diffY2 = SrcImg2.GetData(X21 + x, Y21 + y + 1, i) - SrcImg2.GetData(X21 + x, Y21 + y, i);
+				const int diffX2 = srcImg2->getData(x21 + x + 1, y21 + y, i) - srcImg2->getData(x21 + x, y21 + y, i),
+					diffY2 = srcImg2->getData(x21 + x, y21 + y + 1, i) - srcImg2->getData(x21 + x, y21 + y, i);
 				sum2 += diffX2 * diffX2 + diffY2 * diffY2;
 				if(sum1 > sum2){	/* |∇f1| > |∇f2| */
-					DiffX.SetData(x + 1, y + 1, i, diffX1);
-					DiffY.SetData(x + 1, y + 1, i, diffY1);
+					DiffX.setData(x + 1, y + 1, i, diffX1);
+					DiffY.setData(x + 1, y + 1, i, diffY1);
 				}else{	/* |∇f1| ≦ |∇f2| */
-					DiffX.SetData(x + 1, y + 1, i, diffX2);
-					DiffY.SetData(x + 1, y + 1, i, diffY2);
+					DiffX.setData(x + 1, y + 1, i, diffX2);
+					DiffY.setData(x + 1, y + 1, i, diffY2);
 				}
 			}
 		}
 	}
 
-	for(y = 0; y < h; ++y){
-		for(x = 0; x < w; ++x){
+	for(int y = 0; y < h; ++y){
+		for(int x = 0; x < w; ++x){
 			/* div の計算 */
-			for(i = 0; i < 3; ++i){
-				this->SetData(x, y, i, DiffX.GetData(1 + x, 1 + y, i) - DiffX.GetData(x, 1 + y, i)
-					+ DiffY.GetData(1 + x, 1 + y, i) - DiffY.GetData(1 + x, y, i));
+			for(int i = 0; i < 3; ++i){
+				this->setData(x, y, i, DiffX.getData(1 + x, 1 + y, i) - DiffX.getData(x, 1 + y, i)
+					+ DiffY.getData(1 + x, 1 + y, i) - DiffY.getData(1 + x, y, i));
 			}
 		}
 	}
@@ -185,143 +181,148 @@ int ImageSig_t::SelectStrongerGradientAndMix(class Image_t &SrcImg1, int X11, in
 	return 0;
 }
 
-bool ImageSig_t::CheckReserve(void){
+bool ImageSig::checkReserve(void){
 	return this->data != NULL;
 }
 
-ImageSig_t &ImageSig_t::operator=(ImageSig_t &Src){
-	int x, y, i, w, h; bool flagTemp = true;
-	if(!Src.CheckReserve()){
+ImageSig &ImageSig::operator=(ImageSig &src){
+	bool flagTemp = true;
+	if(!src.checkReserve()){
 		throw "Cannot copy.";
 	}
 	if(this->data != NULL){
-		if(this->width == Src.GetWidth() && this->height == Src.GetHeight()){
+		if(this->width == src.getWidth() && this->height == src.getHeight()){
 			flagTemp = false;
 		}
 	}
 	if(flagTemp){
-		if(this->Create_Image((int)Src.GetWidth(), (int)Src.GetHeight())){
+		if(this->create_Image(static_cast<int>(src.getWidth()), static_cast<int>(src.getHeight()))){
 			throw "Cannot copy.";
 		}
 	}
-	w = (int)this->width; h = (int)this->height;
-	for(y = 0; y < h; ++y){
-		for(x = 0; x < w; ++x){
-			for(i = 0; i < 3; ++i){
-				this->SetData_NoSecure(x, y, i, Src.GetData_NoSecure(x, y, i));
+	const int w = static_cast<int>(this->width), h = static_cast<int>(this->height);
+	for(int y = 0; y < h; ++y){
+		for(int x = 0; x < w; ++x){
+			for(int i = 0; i < 3; ++i){
+				this->setData_NoSecure(x, y, i, src.getData_NoSecure(x, y, i));
 			}
 		}
 	}
 	return *this;
 }
 
-ImageSig_t::ImageSig_t(void){
+ImageSig::ImageSig(void){
 	this->data = NULL;
 }
 
-ImageSig_t::~ImageSig_t(void){
-	this->Free_Image();
+ImageSig::~ImageSig(void){
+	this->free_Image();
 }
 
 /* ↑ここまで ImageSig_t */
 
-int SolvePoisson(class Image_t &ColorImg, class ImageSig_t &LapImg, int x1, int y1, class BitMask_t &RegionMask){
+int solvePoisson(Image *colorImg, ImageSig *lapImg, int x1, int y1, BitMask *regionMask){
 	const char dx[] = {0,-1,1,0}, dy[] = {-1,0,0,1};
-	int x, y, count, i, j, mx, my, periodNum, permissibleError;
-	int sum[3], LapW, LapH, ColW, ColH;
-	class ImageSig_t TempImg, TempImgBefore;	/* 計算用 */
+	int count, periodNum, permissibleError;
+	int sum[3];
+	class ImageSig tempImg, tempImgBefore;	/* 計算用 */
 	bool flagEnd, flagRegion;
 
 	/* 実験用 */
 	int ComparisonCount = 0;	/* Laplacian の比較回数 */
 
-	if( (x1 < 0) || ( (x1 + (int)LapImg.GetWidth() - 1) >= (int)ColorImg.GetWidth()) || (y1 < 0) || ( (y1 + (int)LapImg.GetHeight() - 1) >= (int)ColorImg.GetHeight()) ){
+	if ((x1 < 0) || ((x1 + static_cast<int>(lapImg->getWidth()) - 1) >= static_cast<int>(colorImg->getWidth())) || (y1 < 0) || ((y1 + static_cast<int>(lapImg->getHeight()) - 1) >= static_cast<int>(colorImg->getHeight()))) {
 		return 1;
 	}
 
-	if(LapImg.GetWidth() != RegionMask.GetWidth() || LapImg.GetHeight() != RegionMask.GetHeight()){
+	if(lapImg->getWidth() != regionMask->getWidth() || lapImg->getHeight() != regionMask->getHeight()){
 		return 1;
 	}
 
 	/* 計算用領域確保 */
-	if(TempImg.Create_Image((int)LapImg.GetWidth() + 2, (int)LapImg.GetHeight() + 2)){ return 1; }
-	if(TempImgBefore.Create_Image((int)LapImg.GetWidth() + 2, (int)LapImg.GetHeight() + 2)){ return 1; }
+	if(tempImg.create_Image(static_cast<int>(lapImg->getWidth()) + 2, static_cast<int>(lapImg->getHeight()) + 2)){ return 1; }
+	if (tempImgBefore.create_Image(static_cast<int>(lapImg->getWidth()) + 2, static_cast<int>(lapImg->getHeight()) + 2)) { return 1; }
 
 	/* 領域に初期条件を設定 */
-	LapW = (int)LapImg.GetWidth();
-	LapH = (int)LapImg.GetHeight();
-	ColW = (int)ColorImg.GetWidth();
-	ColH = (int)ColorImg.GetHeight();
-	for(y = -1; y < LapH + 1; ++y){
-		for(x = -1; x < LapW + 1; ++x){
-			mx = x1 + x; my = y1 + y;
+	const int lapW = static_cast<int>(lapImg->getWidth()),
+		lapH = static_cast<int>(lapImg->getHeight()),
+		colW = static_cast<int>(colorImg->getWidth()),
+		colH = static_cast<int>(colorImg->getHeight());
+	for(int y = -1; y < lapH + 1; ++y){
+		for(int x = -1; x < lapW + 1; ++x){
+			int mx = x1 + x, my = y1 + y;
 			/* (x,y) が対象領域であるか判定 */
 			flagRegion = false;
-			if(x >= 0 && x < LapW && y >= 0 && y < LapH){
-				if(RegionMask.GetData_NoSecure(x, y) != 0){
+			if(x >= 0 && x < lapW && y >= 0 && y < lapH){
+				if(regionMask->getData_NoSecure(x, y) != 0){
 					flagRegion = true;
 				}
 			}
 			if(flagRegion){	/* (x,y)が対象領域のとき、初期条件0とする。 */
 				/* 計算領域に設定 */
-				for(i = 0; i < 3; ++i){
-					TempImg.SetData_NoSecure(1 + x, 1 + y, i, 0);
+				for(int i = 0; i < 3; ++i){
+					tempImg.setData_NoSecure(1 + x, 1 + y, i, 0);
 				}
 			}else{	/* (x,y)が対象領域でないとき、対象画像 (境界条件) とする。 */
 				if(mx < 0){	/* 画像の外を画像の端と同じとする。 */
 					mx = x1;
-				}else if(mx >= ColW){
-					mx = x1 + ColW - 1;
+				}else if(mx >= colW){
+					mx = x1 + colW - 1;
 				}
 				if(my < 0){
 					my = y1;
-				}else if(my >= ColH){
-					my = y1 + ColH - 1;
+				}else if(my >= colH){
+					my = y1 + colH - 1;
 				}
-				for(i = 0; i < 3; ++i){
-					TempImg.SetData_NoSecure(1 + x, 1 + y, i, ColorImg.GetData(mx, my, i));
+				for(int i = 0; i < 3; ++i){
+					tempImg.setData_NoSecure(1 + x, 1 + y, i, colorImg->getData(mx, my, i));
 				}
 			}
 		}
 	}
 
 	/* 漸化式を解く */
-	periodNum = maxNum((int)sqrt((double)RegionMask.GetTruePixelNum()) / 2 , 1);	/* 比較する周期 */
+	periodNum = std::max(static_cast<int>(std::sqrt(static_cast<double>(regionMask->getTruePixelNum()))) / 2, 1);	/* 比較する周期 */
 	permissibleError = 0;	/* 前の画像との許容誤差 */
 	for(count = 0, flagEnd = false; !flagEnd;){
-		for(y = 0; y < LapH; ++y){
-			for(x = 0; x < LapW; ++x){
-				if(RegionMask.GetData_NoSecure(x, y) != 0){	/* 対象領域である場合のみ漸化式を解く */
+		for(int y = 0; y < lapH; ++y){
+			for(int x = 0; x < lapW; ++x){
+				if(regionMask->getData_NoSecure(x, y) != 0){	/* 対象領域である場合のみ漸化式を解く */
 					sum[0] = sum[1] = sum[2] = 0;
-					for(i = 0; i < 4; ++i){
-						mx = 1 + x + dx[i]; my = 1 + y + dy[i];
-						for(j = 0; j < 3; ++j){
-							sum[j] += TempImg.GetData_NoSecure(mx, my, j);
+					for(int i = 0; i < 4; ++i){
+						int mx = 1 + x + dx[i], my = 1 + y + dy[i];
+						for(int j = 0; j < 3; ++j){
+							sum[j] += tempImg.getData_NoSecure(mx, my, j);
 						}
 					}
-					for(i = 0; i < 3; ++i){
-						sum[i] = (sum[i] - LapImg.GetData_NoSecure(x, y, i) + 2) / 4; /* +2は四捨五入のため */
-						TempImg.SetData_NoSecure(1 + x, 1 + y, i, sum[i]);
+					for(int i = 0; i < 3; ++i){
+						sum[i] = (sum[i] - lapImg->getData_NoSecure(x, y, i) + 2) / 4; /* +2は四捨五入のため */
+						tempImg.setData_NoSecure(1 + x, 1 + y, i, sum[i]);
 					}
 				}
 			}
 		}
 
 		/* 周期が来たら、 Laplacianを調べる */
-		if((count = (count + 1) % periodNum) == 0){
+		count = (count + 1) % periodNum;
+		if(count == 0) {
 			++ComparisonCount;	/* 実験用 */
 			/* 前回と比較 */
 			sum[0] = sum[1] = sum[2] = 0;
-			for(y = 0; y < LapH; ++y){
-				for(x = 0; x < LapW; ++x){
-					if(RegionMask.GetData_NoSecure(x, y) != 0){
-						for(i = 0; i < 3; ++i){
-							sum[i] += abs(TempImg.GetData_NoSecure(1 + x, 1 + y, i) - TempImgBefore.GetData_NoSecure(1 + x, 1 + y, i));
+			for(int y = 0; y < lapH; ++y){
+				for(int x = 0; x < lapW; ++x){
+					if(regionMask->getData_NoSecure(x, y) != 0){
+						for(int i = 0; i < 3; ++i){
+							sum[i] += std::abs(tempImg.getData_NoSecure(1 + x, 1 + y, i) - tempImgBefore.getData_NoSecure(1 + x, 1 + y, i));
 						}
 					}
 				}
 			}
-			try{ TempImgBefore = TempImg; }catch(...){ return 1; }
+			try{
+				tempImgBefore = tempImg;
+			} catch(...) {
+				return 1;
+			}
 			if(sum[0] <= permissibleError && sum[1] <= permissibleError && sum[2] <= permissibleError){
 				flagEnd = true;
 			}else if(ComparisonCount >= 100){	/* 比較が 100 回に達したら強制終了 */
@@ -331,11 +332,11 @@ int SolvePoisson(class Image_t &ColorImg, class ImageSig_t &LapImg, int x1, int 
 	}
 
 	/* 複写 */
-	for(y = 0; y < LapH; ++y){
-		for(x = 0; x < LapW; ++x){
-			if(RegionMask.GetData(x, y) != 0){
-				for(i = 0; i < 3; ++i){
-					ColorImg.SetData_NoSecure(x1 + x, y1 + y, i, (byte)maxNum(minNum(TempImg.GetData_NoSecure(1 + x, 1 + y, i), 255), 0));
+	for(int y = 0; y < lapH; ++y){
+		for(int x = 0; x < lapW; ++x){
+			if(regionMask->getData(x, y) != 0){
+				for(int i = 0; i < 3; ++i){
+					colorImg->setData_NoSecure(x1 + x, y1 + y, i, static_cast<byte>(std::max(std::min(tempImg.getData_NoSecure(1 + x, 1 + y, i), 255), 0)));
 				}
 			}
 		}
@@ -347,20 +348,21 @@ int SolvePoisson(class Image_t &ColorImg, class ImageSig_t &LapImg, int x1, int 
 	return 0;
 }
 
-int StraightCompose(class Image_t &DestImg, int destX1, int destY1, class Image_t &SrcImg, int srcX1, int srcY1, class BitMask_t &RegionMask){
-	int x, y, i;
-	int MaskW = (int)RegionMask.GetWidth(), MaskH = (int)RegionMask.GetHeight(), DestW = (int)DestImg.GetWidth(), DestH = (int)DestImg.GetHeight(), SrcW = (int)SrcImg.GetWidth(), SrcH = (int)SrcImg.GetHeight();
+int straightCompose(Image *destImg, int destX1, int destY1, Image *srcImg, int srcX1, int srcY1, BitMask *regionMask){
+	const int maskW = static_cast<int>(regionMask->getWidth()), maskH = static_cast<int>(regionMask->getHeight()),
+		destW = static_cast<int>(destImg->getWidth()), destH = static_cast<int>(destImg->getHeight()),
+		srcW = static_cast<int>(srcImg->getWidth()), srcH = static_cast<int>(srcImg->getHeight());
 
-	if( (destX1 < 0) || ( (destX1 + (int)RegionMask.GetWidth() - 1) >= (int)DestImg.GetWidth()) || (destY1 < 0) || ( (destY1 + (int)RegionMask.GetHeight() - 1) >= (int)DestImg.GetHeight()) ){
+	if( (destX1 < 0) || ( (destX1 + static_cast<int>(regionMask->getWidth()) - 1) >= static_cast<int>(destImg->getWidth())) || (destY1 < 0) || ( (destY1 + static_cast<int>(regionMask->getHeight()) - 1) >= static_cast<int>(destImg->getHeight())) ) {
 		return 1;
 	}
 
 	/* 複写 */
-	for(y = 0; y < MaskH; ++y){
-		for(x = 0; x < MaskW; ++x){
-			if(RegionMask.GetData_NoSecure(x, y) != 0){
-				for(i = 0; i < 3; ++i){
-					DestImg.SetData_NoSecure(destX1 + x, destY1 + y, i, SrcImg.GetData_NoSecure(srcX1 + x, srcY1 + y, i));
+	for(int y = 0; y < maskH; ++y) {
+		for(int x = 0; x < maskW; ++x) {
+			if(regionMask->getData_NoSecure(x, y) != 0) {
+				for(int i = 0; i < 3; ++i){
+					destImg->setData_NoSecure(destX1 + x, destY1 + y, i, srcImg->getData_NoSecure(srcX1 + x, srcY1 + y, i));
 				}
 			}
 		}
@@ -369,37 +371,36 @@ int StraightCompose(class Image_t &DestImg, int destX1, int destY1, class Image_
 	return 0;
 }
 
-int ImageSig_t::Write_ImgSig(char *filename)
+int ImageSig::write_ImgSig(char *filename)
 {
 	FILE *fp;
-	byte *HeaderBuf;
+	byte *headerBuf;
 	i16 pixelData[3];
-	int x, y, i;
 
-	if((fp = fopen(filename, "wb")) == NULL){
+	if((fp = fopen(filename, "wb")) == NULL) {
 		return 1;
 	}
 
 	/* header */
 	try{
-		HeaderBuf = new byte[2 + (sizeof(this->width) + sizeof(this->height)) / sizeof(byte)];
-	}catch(...){
+		headerBuf = new byte[2 + (sizeof(this->width) + sizeof(this->height)) / sizeof(byte)];
+	} catch (...) {
 		fclose(fp);
 		return 1;
 	}
-	HeaderBuf[0] = (byte)'L';
-	HeaderBuf[1] = (byte)'F';
-	memcpy(HeaderBuf + 2, &this->width, sizeof(this->width));
-	memcpy(HeaderBuf + 2 + sizeof(this->width) / sizeof(HeaderBuf[0]), &this->height, sizeof(this->height));
+	headerBuf[0] = (byte)'L';
+	headerBuf[1] = (byte)'F';
+	memcpy(headerBuf + 2, &this->width, sizeof(this->width));
+	memcpy(headerBuf + 2 + sizeof(this->width) / sizeof(headerBuf[0]), &this->height, sizeof(this->height));
 
-	fwrite(HeaderBuf, sizeof(HeaderBuf[0]), sizeof(HeaderBuf) / sizeof(HeaderBuf[0]), fp);
-	delete [] HeaderBuf;
+	fwrite(headerBuf, sizeof(headerBuf[0]), sizeof(headerBuf) / sizeof(headerBuf[0]), fp);
+	delete [] headerBuf;
 
 	/* data */
-	for(y = 0; y < (int)this->height; ++y){
-		for(x = 0; x < (int)this->height; ++x){
-			for(i = 0; i < 3; ++i){
-				pixelData[i] = this->GetData_NoSecure(x, y, i);
+	for(int y = 0; y < static_cast<int>(this->height); ++y){
+		for(int x = 0; x < static_cast<int>(this->height); ++x){
+			for(int i = 0; i < 3; ++i){
+				pixelData[i] = this->getData_NoSecure(x, y, i);
 			}
 			fwrite(pixelData, sizeof(i16), 3, fp);
 		}
@@ -410,11 +411,10 @@ int ImageSig_t::Write_ImgSig(char *filename)
 	return 0;
 }
 
-int ImageSig_t::Read_ImgSig(char *filename){
+int ImageSig::read_ImgSig(char *filename){
 	FILE *fp;
 	uint width, height;
 	byte HeaderBuf[2 + (sizeof(width) + sizeof(height)) / sizeof(byte)];
-	int x, y, i;
 	i16 pixelData[3];
 
 	if((fp = fopen(filename, "rb")) == NULL){
@@ -431,17 +431,17 @@ int ImageSig_t::Read_ImgSig(char *filename){
 	memcpy(&width, HeaderBuf + 2, sizeof(width));
 	memcpy(&height, HeaderBuf + 2 + sizeof(width) / sizeof(HeaderBuf[0]), sizeof(height));
 
-	if(this->Create_Image(width, height)){
+	if(this->create_Image(width, height)){
 		fclose(fp);
 		return 1;
 	}
 
 	/* data 取得 */
-	for(y = 0; y < (int)height; ++y){
-		for(x = 0; x < (int)width; ++x){
+	for(int y = 0; y < (int)height; ++y){
+		for(int x = 0; x < (int)width; ++x){
 			fread(pixelData, sizeof(i16), 3, fp);
-			for(i = 0; i < 3; ++i){
-				this->SetData_NoSecure(x, y, i, pixelData[i]);
+			for(int i = 0; i < 3; ++i){
+				this->setData_NoSecure(x, y, i, pixelData[i]);
 			}
 		}
 	}

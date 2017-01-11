@@ -14,11 +14,10 @@ char *myFgets(char *s, int n, FILE *fp){
 	return rtn;
 }
 
-int inputInt(FILE *fp){
+int inputIntFromFILE(FILE *fp){
 	int val;
-	char *buf = new char[32];
+	char buf[32];
 	myFgets(buf, 32, fp);
 	val = atoi(buf);
-	delete [] buf;
 	return val;
 }

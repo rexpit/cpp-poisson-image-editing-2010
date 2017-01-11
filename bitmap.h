@@ -4,64 +4,66 @@
 
 #ifndef BITMAP_H_INCLUDED
 #define BITMAP_H_INCLUDED
-#include <cstdio>
-#include <cstring>
 
-struct Rgb_t{
-	public: unsigned char r;
-	public: unsigned char g;
-	public: unsigned char b;
+struct RGB {
+	unsigned char r;
+	unsigned char g;
+	unsigned char b;
 };
 
-class ImageBase_t{
-	protected: unsigned int width;
-	protected: unsigned int height;
+class ImageBase{
+protected:
+	unsigned int width;
+	unsigned int height;
 
-	public: unsigned int GetWidth(void);	/* width を取り出す */
-	public: unsigned int GetHeight(void);	/* height を取り出す */
+public:
+	unsigned int getWidth(void);	/* width を取り出す */
+	unsigned int getHeight(void);	/* height を取り出す */
 };
 
-class Image_t : public ImageBase_t{
-	private: struct Rgb_t *data;
+class Image : public ImageBase{
+private:
+	struct RGB *data;
 
-	/* 点 (x, y) の ColorId (0:赤, 1:緑, 2:青) の色を取り出す */
-	public: unsigned char GetData(int x, int y, int ColorId);
-	public: unsigned char GetData_NoSecure(int x, int y, int ColorId);
+public:
+	/* 点 (x, y) の colorId (0:赤, 1:緑, 2:青) の色を取り出す */
+	unsigned char getData(int x, int y, int colorId);
+	unsigned char getData_NoSecure(int x, int y, int colorId);
 
-	/* 点 (x, y) の ColorId (0:赤, 1:緑, 2:青) に色 Color を代入 */
-	public: void SetData(int x, int y, int ColorId, unsigned char  Color);
-	public: void SetData_NoSecure(int x, int y, int ColorId, unsigned char Color);
+	/* 点 (x, y) の colorId (0:赤, 1:緑, 2:青) に色 color を代入 */
+	void setData(int x, int y, int colorId, unsigned char color);
+	void setData_NoSecure(int x, int y, int colorId, unsigned char color);
 
 	/* Image を作成し、 RGB 情報も width * height 分だけ動的に取得する。
 	成功すれば 0 を、失敗すれば 0 以外を返す */
-	public: int Create_Image(int width, int height);
+	int create_Image(int width, int height);
 
 	/* dataを解放する */
-	public: void Free_Image(void);
+	void free_Image(void);
 
 	/* filename の Bitmap file を読み込み、高さと幅、 RGB 情報をこの class に入れる。
 	成功すれば 0 を、失敗すれば 0 以外を返す */
-	public: int Read_Bmp(char *filename);
+	int read_Bmp(const char *filename);
 
 	/* 書き込みに成功すれば0を失敗すれば0以外を返す。
 	成功すれば 0 を、失敗すれば 0 以外を返す */
-	public: int Write_Bmp(char *filename);
+	int write_Bmp(const char *filename);
 
 	/* 画像領域を確保しているか確認 (true:確保済み, false:確保していない) */
-	public: bool CheckReserve(void);
+	bool checkReserve(void);
 
 	/* Grayscale 化 */
-	int MakeIntoGrayscale(void);
+	int makeIntoGrayscale(void);
 
-	public: Image_t &operator=(Image_t &Src);
+	Image &operator=(Image &src);
 
 	/* constractor */
-	public: Image_t(void);
+	Image(void);
 	/* destractor */
-	public: ~Image_t(void);
+	~Image(void);
 };
 
 /* NTCS によるグレースケール */
-int RGB2Grayscale(int r, int g, int b);
+int rGB2Grayscale(int r, int g, int b);
 
 #endif /* BITMAP_H_INCLUDED */
